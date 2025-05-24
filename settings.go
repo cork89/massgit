@@ -1,0 +1,378 @@
+package main
+
+import (
+	"fmt"
+	"slices"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+type settingsState uint
+
+const (
+	settingsCount int           = 4
+	repoView      settingsState = iota
+	branchView
+	versionView
+	parentVersionView
+	prefixView
+)
+
+type (
+	errMsg error
+)
+
+type SettingsModel struct {
+	branch        textinput.Model
+	version       textinput.Model
+	parentVersion textinput.Model
+	prefix        textinput.Model
+	config        *Config
+	cursor        Cursor
+	state         settingsState
+	err           error
+	msg           string
+}
+
+func NewSettings(config *Config) SettingsModel {
+	m := SettingsModel{
+		branch:        textinput.New(),
+		prefix:        textinput.New(),
+		version:       textinput.New(),
+		parentVersion: textinput.New(),
+		state:         repoView,
+		config:        config,
+	}
+
+	m.branch.Placeholder = "master"
+	m.branch.CharLimit = 40
+	m.branch.Width = 20
+
+	m.prefix.CharLimit = 40
+	m.prefix.Width = 20
+
+	m.version.Placeholder = "1.0.0-SNAPSHOT"
+	m.version.CharLimit = 40
+	m.version.Width = 20
+
+	m.parentVersion.Placeholder = "1.0.0"
+	m.parentVersion.CharLimit = 40
+	m.parentVersion.Width = 20
+
+	return m
+}
+
+func (m SettingsModel) Init() tea.Cmd {
+	return nil
+}
+
+func positiveMod(a, b int) int {
+	return (a%b + b) % b
+}
+
+type MessageAccumulator struct {
+	msg string
+}
+
+func updateRepo(repo *Repo, m *MessageAccumulator) {
+	var wg sync.WaitGroup
+
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+		start1 := time.Now()
+		branch, err := gitBranch(fmt.Sprintf("./%s", repo.Name))
+		if err != nil {
+			m.msg += fmt.Sprintf("failed to get branch for %s, err=%v\n",
+				repo.Name, err)
+		} else {
+			repo.Branch = branch
+			m.msg += fmt.Sprintf("t1: %s: elapsed: %dms\n", repo.Name,
+				time.Since(start1).Milliseconds())
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		start2 := time.Now()
+		status, err := gitStatus(fmt.Sprintf("./%s", repo.Name))
+		if err != nil {
+			m.msg += fmt.Sprintf("failed to get status for %s, err=%v\n",
+				repo.Name, err)
+		} else {
+			repo.Modified = !(status == "")
+			m.msg += fmt.Sprintf("t2: %s: elapsed: %dms\n", repo.Name,
+				time.Since(start2).Milliseconds())
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		start3 := time.Now()
+		err := mvnVersion(fmt.Sprintf("./%s", repo.Name), repo)
+		if err != nil {
+			m.msg += fmt.Sprintf("failed to get mvn version for %s, err=%v\n",
+				repo.Name, err)
+		} else {
+			m.msg += fmt.Sprintf("t3: %s: elapsed: %dms\n", repo.Name,
+				time.Since(start3).Milliseconds())
+		}
+	}()
+
+	wg.Wait()
+}
+
+func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	var cmds []tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			if m.state == repoView {
+				return m, tea.Quit
+			}
+		case "up", "k":
+			if m.cursor.column == 0 {
+				if m.cursor.row > 0 {
+					m.cursor.row--
+				}
+			} else {
+				m.cursor.row = positiveMod(m.cursor.row-1, settingsCount)
+			}
+		case "down", "j":
+			if m.cursor.column == 0 && m.cursor.row < len(m.config.Repos)-1 {
+				m.cursor.row++
+			} else {
+				m.cursor.row = (m.cursor.row + 1) % settingsCount
+			}
+		case "right", "l":
+			m.cursor.column = (m.cursor.column + 1) % 2
+			if m.cursor.column == 1 && m.cursor.row > settingsCount {
+				m.cursor.row = settingsCount - 1
+			} else if m.cursor.column == 0 && m.cursor.row > len(m.config.Repos) {
+				m.cursor.row = len(m.config.Repos) - 1
+			}
+		case "left", "h":
+			m.cursor.column = positiveMod(m.cursor.column-1, 2)
+
+			// m.cursor.column = (m.cursor.column + 1) % 2
+			if m.cursor.column == 1 && m.cursor.row > settingsCount {
+				m.cursor.row = settingsCount - 1
+			} else if m.cursor.column == 0 && m.cursor.row > len(m.config.Repos) {
+				m.cursor.row = len(m.config.Repos) - 1
+			}
+		case "r":
+			// m.msg = "reloading..."
+			// m.state = repoViewReloading
+			// return m, longRunningTask(&m)
+			if m.state == repoView {
+				m.msg = ""
+				repoNames, err := findGitRepos(".")
+				for _, repoName := range repoNames {
+					found := slices.ContainsFunc(m.config.Repos, func(repo Repo) bool {
+						return repo.Name == repoName
+					})
+					if !found {
+						m.config.Repos = append(m.config.Repos, Repo{Name: repoName, Selected: true})
+					}
+				}
+				start := time.Now()
+				if err != nil {
+					m.msg = "failed to get git repos"
+				} else {
+					// repos := make([]Repo, 0, len(repoNames))
+					ma := &MessageAccumulator{}
+					// repoChan := make(chan Repo, len(m.config.Repos))
+					var wg sync.WaitGroup
+
+					for i := range m.config.Repos {
+						wg.Add(1)
+						go func() {
+							defer wg.Done()
+							updateRepo(&m.config.Repos[i], ma)
+						}()
+					}
+					wg.Wait()
+
+					sort.Slice(m.config.Repos, func(i, j int) bool {
+						return m.config.Repos[i].Name < m.config.Repos[j].Name
+					})
+					// log.Println(ma.msg)
+					// m.config.Repos = repos
+					elapsed := time.Since(start)
+					m.msg += fmt.Sprintf("reloaded in %dms", elapsed.Milliseconds())
+				}
+			}
+		case "s":
+			if m.state == repoView {
+				var (
+					switched bool
+					err      error
+				)
+				for i := range m.config.Repos {
+					if m.config.Repos[i].Branch != m.config.Branch {
+						// check if new branch exists
+						repoPath := fmt.Sprintf("./%s", m.config.Repos[i].Name)
+						exists, _ := checkGitBranch(repoPath, m.config.Branch)
+
+						if exists {
+							switched, err = switchGitBranch(repoPath, m.config.Branch)
+						} else {
+							switched, err = createGitBranch(repoPath, m.config.Branch)
+						}
+						if err != nil {
+							//todo log
+							fmt.Println("failed to switch branch", err)
+							return m, nil
+						}
+						if switched {
+							m.config.Repos[i].Branch = strings.TrimSpace(m.config.Branch)
+						}
+					}
+				}
+				// fmt.Println(m.config)
+				// return m, nil
+				m.config.save()
+				m.config.state = homeView
+				m.msg = ""
+				return m, tea.ClearScreen
+			}
+		case "enter", " ":
+			if m.state == repoView {
+				if m.cursor.column == 0 {
+					m.config.Repos[m.cursor.row].Selected = !m.config.Repos[m.cursor.row].Selected
+				} else {
+					if m.cursor.row == 0 {
+						m.branch.SetValue(m.config.Branch)
+						m.state = branchView
+						m.branch.Focus()
+						return m, nil
+					} else if m.cursor.row == 1 {
+						m.version.SetValue(m.config.Version)
+						m.state = versionView
+						m.version.Focus()
+						return m, nil
+					} else if m.cursor.row == 2 {
+						m.parentVersion.SetValue(m.config.ParentVersion)
+						m.state = parentVersionView
+						m.parentVersion.Focus()
+						return m, nil
+					} else {
+						m.prefix.SetValue(m.config.Prefix)
+						m.state = prefixView
+						m.prefix.Focus()
+						return m, nil
+					}
+				}
+			} else if m.state == branchView {
+				m.config.Branch = m.branch.Value()
+				m.branch.Blur()
+				m.state = repoView
+			} else if m.state == versionView {
+				m.config.Branch = m.version.Value()
+				m.version.Blur()
+				m.state = repoView
+			} else if m.state == parentVersionView {
+				m.config.Branch = m.parentVersion.Value()
+				m.parentVersion.Blur()
+				m.state = repoView
+			} else {
+				m.config.Prefix = m.prefix.Value()
+				m.prefix.Blur()
+				m.state = repoView
+			}
+		}
+	case errMsg:
+		m.err = msg
+		return m, nil
+	}
+
+	m.branch, cmd = m.branch.Update(msg)
+	cmds = append(cmds, cmd)
+	m.prefix, cmd = m.prefix.Update(msg)
+	cmds = append(cmds, cmd)
+	return m, tea.Batch(cmds...)
+}
+
+func getCursor(cursor Cursor, row int, col int) string {
+	if cursor.column == col && cursor.row == row {
+		return selectedStyle.Render(">")
+	}
+	return " "
+}
+
+func (m SettingsModel) View() string {
+	var s string = ""
+	// if m.config.clearPending {
+	// 	s += "\033[0J"
+	// 	m.config.clearPending = false
+	// }
+	if m.state == branchView {
+		s += fmt.Sprintf(
+			"Branch name:\n\n%s\n\n",
+			m.branch.View(),
+		)
+		s += helpStyle.Render("\nenter: stage\n")
+	} else if m.state == prefixView {
+		s += fmt.Sprintf(
+			"Project name prefix to hide:\n\n%s\n\n",
+			m.prefix.View(),
+		)
+		s += helpStyle.Render("\nenter: stage\n")
+	} else if m.state == versionView {
+		s += fmt.Sprintf(
+			"Version:\n\n%s\n\n",
+			m.version.View(),
+		)
+		s += helpStyle.Render("\nenter: stage\n")
+	} else if m.state == parentVersionView {
+		s += fmt.Sprintf(
+			"Parent version:\n\n%s\n\n",
+			m.parentVersion.View(),
+		)
+		s += helpStyle.Render("\nenter: stage\n")
+	} else {
+		// s += "\033[0J"
+		var sub = make([]string, 0, len(m.config.Repos))
+		for i, repo := range m.config.Repos {
+			// cursor := " "
+			// if m.cursor.column == 0 && m.cursor.row == i {
+			// 	cursor = selectedStyle.Render(">")
+			// }
+			cursor := getCursor(m.cursor, i, 0)
+
+			// Is this choice selected?
+			checked := " "
+			if ok := repo.Selected; ok {
+				checked = "x"
+			}
+
+			// Render the row
+			sub = append(sub, fmt.Sprintf("%s [%s] %s\n", cursor, checked, repo.Name))
+		}
+		var b string
+		b += fmt.Sprintf("\t  %s branch: %s\n", getCursor(m.cursor, 0, 1), m.config.Branch)
+		b += fmt.Sprintf("\t  %s ver: %s\n", getCursor(m.cursor, 1, 1), m.config.Version)
+		b += fmt.Sprintf("\t  %s parent ver: %s\n", getCursor(m.cursor, 2, 1), m.config.ParentVersion)
+		b += fmt.Sprintf("\t  %s hide prefix: %s\n", getCursor(m.cursor, 3, 1), m.config.Prefix)
+		// b := fmt.Sprintf("\t  %s branch: %s\n\t  %s hide prefix: %s\n", getCursor(m.cursor, 0, 1), m.config.Branch, getCursor(m.cursor, 1, 1), m.config.Prefix)
+		s += lipgloss.JoinHorizontal(lipgloss.Top, strings.Join(sub, ""), b)
+		if m.msg != "" {
+			s += "\n"
+			s += msgStyle.Render(m.msg)
+		}
+		s += fmt.Sprintf("\n%v", m.cursor)
+		s += helpStyle.Render("\nenter: select • s: save • b: change branch • r: reload • q: exit\n")
+	}
+
+	return s
+}
