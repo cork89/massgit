@@ -83,3 +83,25 @@ func gitStatus(repoPath string) (string, error) {
 	}
 	return string(out), nil
 }
+
+// run git add <file>
+func gitAdd(repoPath string, fileName string) (string, error) {
+	cmd := exec.Command("git", "add", fileName)
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// run git commit -m <commit msg>
+func gitCommit(repoPath string, commitMsg string) (string, error) {
+	cmd := exec.Command("git", "commit", "-m", commitMsg)
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}

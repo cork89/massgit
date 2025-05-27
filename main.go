@@ -71,7 +71,9 @@ func (c Cursor) String() string {
 
 type Maven struct {
 	Version       string `json:"version"`
-	ParentVersion string `json:"parentVerison"`
+	Vln           string `json:"versionLn"`
+	ParentVersion string `json:"parentVersion"`
+	Pvln          string `json:"parentVersionLn"`
 }
 
 type Repo struct {
@@ -86,7 +88,6 @@ type model struct {
 	config   Config
 	settings SettingsModel
 	home     HomeModel
-	index    int
 }
 
 type Config struct {
@@ -96,6 +97,14 @@ type Config struct {
 	ParentVersion string `json:"parentVersion"`
 	Prefix        string `json:"prefix"`
 	state         sessionState
+}
+
+func (c Config) String() string {
+	bytes, err := json.Marshal(c)
+	if err != nil {
+		return "failed"
+	}
+	return string(bytes)
 }
 
 func (c Config) save() error {
@@ -230,21 +239,8 @@ func newModel() model {
 	}
 
 	m := model{config: config}
-	// for i, repo := range config.Repos {
-	// 	if repo.Selected {
-	// 		m.current = i
-	// 		break
-	// 	}
-	// }
-	// m.branch = textinput.New()
-	// m.branch.Placeholder = "master"
-	// m.branch.CharLimit = 40
-	// m.branch.Width = 20
 	m.settings = NewSettings(&config)
 	m.home = NewHome(&config)
-
-	// m.timer = timer.New(timeout)
-	// m.spinner = spinner.New()
 	return m
 }
 

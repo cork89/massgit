@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -32,14 +33,6 @@ func (m HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
-		// case "tab":
-		// 	for i := range m.config.Repos {
-		// 		idx := (m.current + i + 1) % len(m.config.Repos)
-		// 		if m.config.Repos[idx].Selected {
-		// 			m.current = idx
-		// 			break
-		// 		}
-		// 	}
 		case "up", "k":
 			for i := range m.config.Repos {
 				idx := positiveMod(m.current-4-i, len(m.config.Repos))
@@ -75,6 +68,34 @@ func (m HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			m.config.state = settingsView
 			return m, tea.ClearScreen
+		case "c":
+			var wg sync.WaitGroup
+			for i := range m.config.Repos {
+				wg.Add(1)
+				var repoPath = fmt.Sprintf("./%s", m.config.Repos[i].Name)
+				go func() {
+					defer wg.Done()
+					_, err := gitAdd(repoPath, "pom.xml")
+
+					if err != nil {
+						fmt.Println("failed to add pom.xml")
+					}
+
+					_, err = gitCommit(repoPath, "update pom version")
+
+					if err != nil {
+						fmt.Println("failed to commit pom.xml")
+					}
+
+					status, err := gitStatus(repoPath)
+					if err != nil {
+						fmt.Printf("failed to get status for %s, err=%v\n", m.config.Repos[i].Name, err)
+					} else {
+						m.config.Repos[i].Modified = !(status == "")
+					}
+				}()
+			}
+			wg.Wait()
 		}
 
 	case errMsg:
@@ -91,8 +112,10 @@ func (m HomeModel) View() string {
 	// 	s += "\033[0J"
 	// 	m.config.clearPending = false
 	// }
-	s += fmt.Sprintf("%v - %s\n", m.config.Repos, m.config.Branch)
-	s += fmt.Sprintf("%d\n", m.current)
+	// s += fmt.Sprintf("%v - %s\n", m.config.Repos, m.config.Branch)
+	// s += fmt.Sprintf("ver: %s\n", m.config.Version)
+	// s += fmt.Sprintf("pver: %s\n", m.config.ParentVersion)
+	// s += fmt.Sprintf("%d\n", m.current)
 	sub := make([]string, 0, len(m.config.Repos))
 
 	for i, repo := range m.config.Repos {
@@ -113,7 +136,7 @@ func (m HomeModel) View() string {
 
 	s += lipgloss.JoinVertical(lipgloss.Top, sub2...)
 
-	s += helpStyle.Render("\ntab: focus next • s: settings • q: exit\n")
+	s += helpStyle.Render("\nhjkl mvmt • s: settings • c: commit changes • q: exit\n")
 
 	// style := lipgloss.NewStyle().Height(20).Width(80).Padding(1, 2)
 	return s
