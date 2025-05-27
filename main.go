@@ -20,18 +20,6 @@ const (
 )
 
 var (
-	// Available spinners
-	// spinners = []spinner.Spinner{
-	// 	spinner.Line,
-	// 	spinner.Dot,
-	// 	spinner.MiniDot,
-	// 	spinner.Jump,
-	// 	spinner.Pulse,
-	// 	spinner.Points,
-	// 	spinner.Globe,
-	// 	spinner.Moon,
-	// 	spinner.Monkey,
-	// }
 	shell      string
 	grep       string
 	sed        string
@@ -53,7 +41,6 @@ var (
 			Align(lipgloss.Center, lipgloss.Center).
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("78"))
-	// spinnerStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("69"))
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	helpStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 

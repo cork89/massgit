@@ -380,10 +380,6 @@ func getCursor(cursor Cursor, row int, col int) string {
 
 func (m SettingsModel) View() string {
 	var s string = ""
-	// if m.config.clearPending {
-	// 	s += "\033[0J"
-	// 	m.config.clearPending = false
-	// }
 	switch m.state {
 	case branchView:
 		s += fmt.Sprintf(
