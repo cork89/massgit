@@ -265,6 +265,10 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					var wg sync.WaitGroup
 
 					for i := range m.config.Repos {
+						if !m.config.Repos[i].Selected {
+							continue
+						}
+
 						wg.Add(1)
 						go func() {
 							defer wg.Done()
@@ -298,6 +302,9 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				start := time.Now()
 				ma := &MessageAccumulator{}
 				for i := range m.config.Repos {
+					if !m.config.Repos[i].Selected {
+						continue
+					}
 					wg.Add(1)
 					go func() {
 						defer wg.Done()
