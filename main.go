@@ -23,6 +23,7 @@ var (
 	shell      string
 	grep       string
 	sed        string
+	updateMvn  func(string, string) []string
 	modelStyle = lipgloss.NewStyle().
 			Width(15).
 			Height(5).
@@ -44,7 +45,7 @@ var (
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	helpStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
-	mainStyle = lipgloss.NewStyle().Height(20).Width(80).Padding(1, 1)
+	mainStyle = lipgloss.NewStyle().Height(20).Width(120).Padding(1, 1)
 )
 
 type Cursor struct {
@@ -83,6 +84,7 @@ type Config struct {
 	Version       string `json:"version"`
 	ParentVersion string `json:"parentVersion"`
 	Prefix        string `json:"prefix"`
+	Cols          string `json:"cols"`
 	state         sessionState
 }
 
@@ -184,7 +186,7 @@ func createConfig(config Config) error {
 		return saveConfig(config)
 	}
 
-	err = os.Mkdir(".massgit", 0644)
+	err = os.Mkdir(".massgit", 0755)
 
 	if err != nil {
 		fmt.Println("failed to create massgit cache")

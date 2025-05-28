@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -129,9 +130,20 @@ func (m HomeModel) View() string {
 			sub = append(sub, modelStyle.Render(fmt.Sprintf("%s\n%s %s\nv: %s\npv: %s", trimmedRepo, getModifiedColor(repo.Modified), repo.Branch, repo.Maven.Version, repo.Maven.ParentVersion)))
 		}
 	}
-	sub2 := make([]string, 0, (len(sub)+3)/4)
-	for i := range (len(sub) + 3) / 4 {
-		sub2 = append(sub2, lipgloss.JoinHorizontal(lipgloss.Top, sub[i*4:i*4+4]...))
+	numCols, err := strconv.Atoi(m.config.Cols)
+
+	if err != nil {
+		numCols = 4
+	}
+
+	sub2 := make([]string, 0, (len(sub)+numCols-1)/numCols)
+	for i := range (len(sub) + numCols - 1) / numCols {
+		start := i * numCols
+		end := i*numCols + numCols
+		if end > len(m.config.Repos) {
+			end = len(m.config.Repos)
+		}
+		sub2 = append(sub2, lipgloss.JoinHorizontal(lipgloss.Top, sub[start:end]...))
 	}
 
 	s += lipgloss.JoinVertical(lipgloss.Top, sub2...)

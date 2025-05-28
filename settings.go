@@ -16,7 +16,7 @@ import (
 type settingsState uint
 
 const (
-	settingsCount int           = 4
+	settingsCount int           = 5
 	stageChanges  string        = "\nenter: stage\n"
 	repoView      settingsState = iota
 	reloadingView
@@ -25,6 +25,7 @@ const (
 	versionView
 	parentVersionView
 	prefixView
+	colsView
 )
 
 type (
@@ -36,6 +37,7 @@ type SettingsModel struct {
 	version       textinput.Model
 	parentVersion textinput.Model
 	prefix        textinput.Model
+	cols          textinput.Model
 	config        *Config
 	cursor        Cursor
 	state         settingsState
@@ -49,6 +51,7 @@ func NewSettings(config *Config) SettingsModel {
 		prefix:        textinput.New(),
 		version:       textinput.New(),
 		parentVersion: textinput.New(),
+		cols:          textinput.New(),
 		state:         repoView,
 		config:        config,
 	}
@@ -67,6 +70,10 @@ func NewSettings(config *Config) SettingsModel {
 	m.parentVersion.Placeholder = "1.0.0"
 	m.parentVersion.CharLimit = 40
 	m.parentVersion.Width = 20
+
+	m.cols.Placeholder = "4"
+	m.cols.CharLimit = 1
+	m.cols.Width = 20
 
 	return m
 }
@@ -96,7 +103,7 @@ func updateRepo(repo *Repo, m *MessageAccumulator) {
 			m.msg += fmt.Sprintf("failed to get branch for %s, err=%v\n",
 				repo.Name, err)
 		} else {
-			repo.Branch = branch
+			repo.Branch = strings.TrimSpace(branch)
 			m.msg += fmt.Sprintf("t1: %s: elapsed: %dms\n", repo.Name,
 				time.Since(start1).Milliseconds())
 		}
@@ -330,10 +337,15 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.state = parentVersionView
 						m.parentVersion.Focus()
 						return m, nil
-					} else {
+					} else if m.cursor.row == 3 {
 						m.prefix.SetValue(m.config.Prefix)
 						m.state = prefixView
 						m.prefix.Focus()
+						return m, nil
+					} else {
+						m.cols.SetValue(m.config.Cols)
+						m.state = colsView
+						m.cols.Focus()
 						return m, nil
 					}
 				}
@@ -353,6 +365,10 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.config.Prefix = m.prefix.Value()
 				m.prefix.Blur()
 				m.state = repoView
+			case colsView:
+				m.config.Cols = m.cols.Value()
+				m.cols.Blur()
+				m.state = repoView
 			}
 		}
 	case errMsg:
@@ -367,6 +383,8 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.version, cmd = m.version.Update(msg)
 	cmds = append(cmds, cmd)
 	m.parentVersion, cmd = m.parentVersion.Update(msg)
+	cmds = append(cmds, cmd)
+	m.cols, cmd = m.cols.Update(msg)
 	cmds = append(cmds, cmd)
 	return m, tea.Batch(cmds...)
 }
@@ -405,6 +423,12 @@ func (m SettingsModel) View() string {
 			m.parentVersion.View(),
 		)
 		s += helpStyle.Render(stageChanges)
+	case colsView:
+		s += fmt.Sprintf(
+			"Number of columns to display:\n\n%s\n\n",
+			m.cols.View(),
+		)
+		s += helpStyle.Render(stageChanges)
 	default:
 		// s += "\033[0J"
 		var sub = make([]string, 0, len(m.config.Repos))
@@ -422,6 +446,8 @@ func (m SettingsModel) View() string {
 		b += fmt.Sprintf("\t  %s ver: %s\n", getCursor(m.cursor, 1, 1), m.config.Version)
 		b += fmt.Sprintf("\t  %s parent ver: %s\n", getCursor(m.cursor, 2, 1), m.config.ParentVersion)
 		b += fmt.Sprintf("\t  %s hide prefix: %s\n", getCursor(m.cursor, 3, 1), m.config.Prefix)
+		b += fmt.Sprintf("\t  %s num of cols: %s\n", getCursor(m.cursor, 4, 1), m.config.Cols)
+
 		// b := fmt.Sprintf("\t  %s branch: %s\n\t  %s hide prefix: %s\n", getCursor(m.cursor, 0, 1), m.config.Branch, getCursor(m.cursor, 1, 1), m.config.Prefix)
 		s += lipgloss.JoinHorizontal(lipgloss.Top, strings.Join(sub, ""), b)
 		if m.msg != "" {

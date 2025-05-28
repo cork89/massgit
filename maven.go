@@ -50,12 +50,16 @@ func updateMvnVersion(repoPath string, version string, lineNum string, repo *Rep
 	)
 
 	cmd := exec.Command(
+		// "sed",
+		// "-i",
+		// "",
+		// fmt.Sprintf("%ss#^\\([ \\t]*\\).*#\\1<version>%s</version>#", lineNum, version),
+		// "pom.xml",
 		"sed",
-		"-i",
-		fmt.Sprintf("%ss#^\\([ \\t]*\\).*#\\1<version>%s</version>#", lineNum, version),
-		"pom.xml",
+		updateMvn(version, lineNum)...,
 	)
 
+	fmt.Println(cmd)
 	cmd.Dir = repoPath
 	output, err = cmd.Output()
 
@@ -75,9 +79,7 @@ func updateMvnParentVersion(repoPath string, version string, lineNum string, rep
 	)
 	cmd := exec.Command(
 		"sed",
-		"-i",
-		fmt.Sprintf("%ss#^\\([ \\t]*\\).*#\\1<version>%s</version>#", lineNum, version),
-		"pom.xml",
+		updateMvn(version, lineNum)...,
 	)
 
 	cmd.Dir = repoPath
