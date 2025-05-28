@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -35,21 +34,14 @@ func (m HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "up", "k":
-			for i := range m.config.Repos {
-				idx := positiveMod(m.current-4-i, len(m.config.Repos))
-				if m.config.Repos[idx].Selected {
-					m.current = idx
-					break
-				}
+			idx := m.current - m.config.Cols
+			if !(len(m.config.VisibleRepos)%2 == 0) {
+				idx--
 			}
+			m.current = m.config.VisibleRepos[positiveMod(idx, len(m.config.VisibleRepos))]
+
 		case "down", "j":
-			for i := range m.config.Repos {
-				idx := positiveMod(m.current+4+i, len(m.config.Repos))
-				if m.config.Repos[idx].Selected {
-					m.current = idx
-					break
-				}
-			}
+			m.current = m.config.VisibleRepos[positiveMod(m.current+m.config.Cols, len(m.config.VisibleRepos))]
 		case "tab", "right", "l":
 			for i := range m.config.Repos {
 				idx := positiveMod(m.current+1+i, len(m.config.Repos))
@@ -116,7 +108,8 @@ func (m HomeModel) View() string {
 	// s += fmt.Sprintf("%v - %s\n", m.config.Repos, m.config.Branch)
 	// s += fmt.Sprintf("ver: %s\n", m.config.Version)
 	// s += fmt.Sprintf("pver: %s\n", m.config.ParentVersion)
-	// s += fmt.Sprintf("%d\n", m.current)
+	s += fmt.Sprintf("%d\n", m.config.VisibleRepos)
+	s += fmt.Sprintf("%d\n", m.current)
 	sub := make([]string, 0, len(m.config.Repos))
 
 	for i, repo := range m.config.Repos {
@@ -130,9 +123,9 @@ func (m HomeModel) View() string {
 			sub = append(sub, modelStyle.Render(fmt.Sprintf("%s\n%s %s\nv: %s\npv: %s", trimmedRepo, getModifiedColor(repo.Modified), repo.Branch, repo.Maven.Version, repo.Maven.ParentVersion)))
 		}
 	}
-	numCols, err := strconv.Atoi(m.config.Cols)
+	numCols := m.config.Cols
 
-	if err != nil {
+	if numCols == 0 {
 		numCols = 4
 	}
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -301,10 +302,13 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				)
 				start := time.Now()
 				ma := &MessageAccumulator{}
+				// clear(m.config.VisibleRepos)
+				m.config.VisibleRepos = make([]int, 0)
 				for i := range m.config.Repos {
 					if !m.config.Repos[i].Selected {
 						continue
 					}
+					m.config.VisibleRepos = append(m.config.VisibleRepos, i)
 					wg.Add(1)
 					go func() {
 						defer wg.Done()
@@ -350,7 +354,7 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.prefix.Focus()
 						return m, nil
 					} else {
-						m.cols.SetValue(m.config.Cols)
+						m.cols.SetValue(fmt.Sprintf("%d", m.config.Cols))
 						m.state = colsView
 						m.cols.Focus()
 						return m, nil
@@ -373,7 +377,12 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.prefix.Blur()
 				m.state = repoView
 			case colsView:
-				m.config.Cols = m.cols.Value()
+				cols, err := strconv.Atoi(m.cols.Value())
+				if err != nil {
+					m.config.Cols = 4
+				} else {
+					m.config.Cols = cols
+				}
 				m.cols.Blur()
 				m.state = repoView
 			}
@@ -453,7 +462,7 @@ func (m SettingsModel) View() string {
 		b += fmt.Sprintf("\t  %s ver: %s\n", getCursor(m.cursor, 1, 1), m.config.Version)
 		b += fmt.Sprintf("\t  %s parent ver: %s\n", getCursor(m.cursor, 2, 1), m.config.ParentVersion)
 		b += fmt.Sprintf("\t  %s hide prefix: %s\n", getCursor(m.cursor, 3, 1), m.config.Prefix)
-		b += fmt.Sprintf("\t  %s num of cols: %s\n", getCursor(m.cursor, 4, 1), m.config.Cols)
+		b += fmt.Sprintf("\t  %s num of cols: %d\n", getCursor(m.cursor, 4, 1), m.config.Cols)
 
 		// b := fmt.Sprintf("\t  %s branch: %s\n\t  %s hide prefix: %s\n", getCursor(m.cursor, 0, 1), m.config.Branch, getCursor(m.cursor, 1, 1), m.config.Prefix)
 		s += lipgloss.JoinHorizontal(lipgloss.Top, strings.Join(sub, ""), b)

@@ -80,11 +80,12 @@ type model struct {
 
 type Config struct {
 	Repos         []Repo `json:"repos"`
+	VisibleRepos  []int  `json:"visibleRepos"`
 	Branch        string `json:"branch"`
 	Version       string `json:"version"`
 	ParentVersion string `json:"parentVersion"`
 	Prefix        string `json:"prefix"`
-	Cols          string `json:"cols"`
+	Cols          int    `json:"cols"`
 	state         sessionState
 }
 
@@ -183,6 +184,8 @@ func createConfig(config Config) error {
 	if err == nil {
 		config.Repos = []Repo{}
 		config.Branch = "master"
+		config.Cols = 4
+		config.VisibleRepos = []int{}
 		return saveConfig(config)
 	}
 
@@ -195,6 +198,8 @@ func createConfig(config Config) error {
 
 	config.Repos = []Repo{}
 	config.Branch = "master"
+	config.Cols = 4
+	config.VisibleRepos = []int{}
 	return saveConfig(config)
 }
 
